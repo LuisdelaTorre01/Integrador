@@ -1,0 +1,257 @@
+//Ingeniero Luis de la Torre.
+// El siguiente programa es para el control de un invernadero.
+//Cuenta con un display en el cual se va estar visualizando la fecha, hora, humedad y temperatura.
+//Para el control del tiempo se esta usando un DS1307 y para sensar humedad y temperatura un DHT11.
+
+//Libreria para comunicaicon I2C.
+#include <Wire.h>
+//Libreria para comunicaicon Display 16x2.
+#include  <LiquidCrystal.h>
+//Libreria del DHT11
+#include <DHT.h>
+
+//Se define el pin con el que se va estar leyendo las variables, el tipo de sensor que se va a usar y se carga.
+#define DHTPIN 13
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE); 
+
+// AQUI SE CONFIGURAN LOS PINES PARA LA COMUNICACION CON LA PANTALLA
+LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
+
+
+const int sensor1Pin = 6;
+const int sensor2Pin = 7;
+const int boton1Pin = 10;
+char item=0;              //variable que asigna el menu
+char n_menus=3;           //variabble que fija 3 menus
+
+// Declaracion de las variables para almacenar informacion de tiempo leida desde RTC
+uint8_t second, minute, hour, wday, day, month, year, ctrl;
+
+
+
+
+void setup()
+{
+  // INICIAMOS LA PANTALLA 16X02
+  lcd.begin(16, 2);
+  // MOVER EL CURSOR A LA PRIMERA POSICION DE LA PANTALLA (0, 0)
+  lcd.home();
+  // IMPRIMIR "Cargando configuracion"
+  lcd.print("Cargando Config");
+  
+  
+  digitalWrite(9, LOW);     // Pone el pin a 9 (pull-up) 
+  Serial.begin(9600);
+  pinMode(sensor1Pin, INPUT);
+  pinMode(sensor2Pin, INPUT);
+  pinMode(A3, OUTPUT);
+  digitalWrite(A3, HIGH);
+  pinMode(A2, OUTPUT);
+  digitalWrite(A2, LOW);
+  Wire.begin();
+  dht.begin();
+  delay(1000);
+}
+
+
+
+
+ 
+void loop()
+{
+
+  while(true)
+ {
+  seleccionmenu();
+  
+
+  switch (item)
+  {
+
+  case 0:
+    lcd.clear();
+     // Leer los registros del RTC
+    if (read_ds1307()) {
+    // Mostrar la fecha y hora
+    print_time();
+    } else {
+    // No se puede leer desde le DS1307 (NACK en I2C)
+    Serial.println("No se detecta el DS1307, revisar conexiones");
+    lcd.print("Error DS1307");
+    }
+  break; 
+
+  case 1:
+  lecturadht11();
+  break;
+
+  case 2:
+  //Serial.println("");
+  sensorhumedad();
+  lcd.setCursor ( 0, 1 ); 
+  sensorluz();
+  break;   
+}
+
+delay(500);
+
+ }
+}
+
+void sensorluz()
+{
+
+      digitalWrite(8, LOW);
+      int luz = digitalRead(sensor2Pin);
+      if (luz == LOW)
+   {
+      Serial.println("Luz PRENDIDA");   
+      //aquí se ejecutarían las acciones
+      digitalWrite(8, HIGH);     // Pone el pin a 1 (pull-up)
+      lcd.clear(); 
+      lcd.print("Dia Soleado");
+   }
+   else {Serial.println("Noche"); lcd.clear(); lcd.print("Noche"); }
+  }
+
+void sensorhumedad()
+{
+      digitalWrite(9, LOW);     // Pone el pin a 1 (pull-up)  
+      int humedad = digitalRead(sensor1Pin);
+      if (humedad == HIGH)
+   {
+      Serial.println("Activando bomba de riego");  
+      //aquí se ejecutarían las acciones
+      digitalWrite(9, HIGH);     // Pone el pin a 1 (pull-up)
+      lcd.setCursor ( 0, 2 ); 
+      lcd.print("Activa bomba de riego");
+   }
+   else {Serial.println("PLANTAS HUMEDAS"); lcd.clear(); lcd.print("Hemdad Correcta");  }
+  }
+
+bool read_ds1307()
+{
+  // Iniciar el intercambio de información con el DS1307 (0xD0)
+  Wire.beginTransmission(0x68);
+ 
+  // Escribir la dirección del segundero
+  Wire.write(0x00);
+ 
+  // Terminamos la escritura y verificamos si el DS1307 respondio
+  // Si la escritura se llevo a cabo el metodo endTransmission retorna 0
+  if (Wire.endTransmission() != 0)
+    return false;
+ 
+  // Si el DS1307 esta presente, comenzar la lectura de 8 bytes
+  Wire.requestFrom(0x68, 8);
+ 
+  // Recibimos el byte del registro 0x00 y lo convertimos a binario
+  second = bcd2bin(Wire.read());
+  minute = bcd2bin(Wire.read()); // Continuamos recibiendo cada uno de los registros
+  hour = bcd2bin(Wire.read());
+  wday = bcd2bin(Wire.read());
+  day = bcd2bin(Wire.read());
+  month = bcd2bin(Wire.read());
+  year = bcd2bin(Wire.read());
+ 
+  // Recibir los datos del registro de control en la dirección 0x07
+  ctrl = Wire.read();
+ 
+  // Operacion satisfactoria, retornamos verdadero
+  return true;
+}
+
+uint8_t bcd2bin(uint8_t bcd)
+{
+  // Convertir decenas y luego unidades a un numero binario
+  return (bcd / 16 * 10) + (bcd % 16);
+}
+
+void print_time()
+{
+  Serial.print("Fecha: ");
+  lcd.print("Fecha: ");
+  Serial.print(day);
+  lcd.print(day);
+  Serial.print('/');
+  lcd.print('/');
+  Serial.print(month);
+  lcd.print(month);
+  Serial.print('/');
+  lcd.print('/');
+  Serial.print(year);
+  lcd.print(year);
+
+ lcd.setCursor ( 0, 1 );
+  Serial.print("  Hora: ");
+  lcd.print("Hora: ");
+  Serial.print(hour);
+  lcd.print(hour);
+  Serial.print(':');
+  lcd.print(':');
+  Serial.print(minute);
+  lcd.print(minute);
+  Serial.print(':');
+  lcd.print(':');
+  Serial.print(second);
+  lcd.print(second);
+ 
+  Serial.println();
+}
+
+void seleccionmenu()
+{
+  int boton = digitalRead(boton1Pin);
+  if(boton==HIGH)
+  {
+  item++; 
+  delay(50); 
+  lcd.clear();
+  }
+  if(item>(n_menus-1))
+  {
+  item=0;
+  }
+}
+
+void lecturadht11()
+{
+  // Leemos la humedad relativa
+  float h = dht.readHumidity();
+  // Leemos la temperatura en grados centígrados (por defecto)
+  float t = dht.readTemperature();
+
+  // Comprobamos si ha habido algún error en la lectura
+  if (isnan(h) || isnan(t)) {
+    lcd.clear();
+    Serial.println("Error obteniendo los datos del sensor DHT11");
+    lcd.clear();
+    lcd.print("Error DHT11");
+    return;
+  }
+  
+   
+  Serial.print("Humedad: ");
+  Serial.print(h);
+  Serial.print(" %\t");
+  
+  lcd.clear();
+  lcd.print("Hum:  ");
+  lcd.print(h);
+  lcd.print(" %\t");
+
+  
+  Serial.print("Temperatura: ");
+  Serial.print(t);
+  Serial.print(" *C ");
+  
+  lcd.setCursor ( 0, 1 );
+  lcd.print("Temp: ");
+  lcd.print(t);
+  lcd.print(" *C ");
+
+    
+}
+
+  
